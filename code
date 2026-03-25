@@ -1,0 +1,303 @@
+# ============================================================
+#  Enhanced Clustree — Single Reusable Function
+#  Supports: custom hex · RColorBrewer · viridis · scico
+# ============================================================
+
+library(clustree)
+library(ggplot2)
+library(dplyr)
+library(grid)
+library(ggtext)
+library(scales)
+
+# ── Palette resolver helper ────────────────────────────────────────────────────
+# Returns a vector of `n` hex colours from any supported palette source.
+#
+# palette can be:
+#   • A character vector of hex codes  e.g. c("#D62828","#F77F00","#06D6A0")
+#   • An RColorBrewer name             e.g. "Set1", "RdYlBu", "Spectral"
+#   • A viridis option letter/name     e.g. "viridis", "magma", "plasma",
+#                                           "inferno", "cividis", "mako",
+#                                           "rocket", "turbo"
+#   • A scico palette name             e.g. "roma", "vik", "berlin",
+#                                           "batlow", "bamako", "lajolla"
+#                                      (requires the scico package)
+
+resolve_palette <- function(palette, n) {
+  
+  # ── 1. Custom hex vector ──────────────────────────────────
+  if (is.character(palette) && length(palette) > 1) {
+    return(scales::col_numeric(palette = palette,
+                               domain  = c(0, n - 1))(seq(0, n - 1)))
+  }
+  
+  pal_name <- palette[1]
+  
+  # ── 2. viridis ────────────────────────────────────────────
+  viridis_options <- c("viridis","magma","plasma","inferno",
+                       "cividis","mako","rocket","turbo",
+                       "A","B","C","D","E","F","G","H")
+  if (tolower(pal_name) %in% tolower(viridis_options)) {
+    if (!requireNamespace("viridis", quietly = TRUE))
+      stop("Install the 'viridis' package: install.packages('viridis')")
+    return(viridis::viridis(n, option = pal_name))
+  }
+  
+  # ── 3. scico ──────────────────────────────────────────────
+  if (requireNamespace("scico", quietly = TRUE)) {
+    scico_pals <- scico::scico_palette_names()
+    if (pal_name %in% scico_pals)
+      return(scico::scico(n, palette = pal_name))
+  }
+  
+  # ── 4. RColorBrewer ───────────────────────────────────────
+  if (requireNamespace("RColorBrewer", quietly = TRUE)) {
+    brewer_pals <- rownames(RColorBrewer::brewer.pal.info)
+    if (pal_name %in% brewer_pals) {
+      max_n   <- RColorBrewer::brewer.pal.info[pal_name, "maxcolors"]
+      n_fetch <- min(n, max_n)
+      cols    <- RColorBrewer::brewer.pal(n_fetch, pal_name)
+      # interpolate to exactly n colours
+      return(grDevices::colorRampPalette(cols)(n))
+    }
+  }
+  
+  stop("Palette '", pal_name, "' not recognised. ",
+       "Provide a hex vector, viridis option, scico name, or RColorBrewer name.")
+}
+
+
+# ── Main function ──────────────────────────────────────────────────────────────
+plot_clustree <- function(
+    
+  # ── Data ────────────────────────────────────────────────
+  seurat_obj,
+  prefix             = "integrated_snn_res.",
+  
+  # ── Node appearance ─────────────────────────────────────
+  node_size_range    = c(4, 14),
+  node_alpha         = 1.0,
+  node_text_size     = 3,
+  node_text_colour   = "white",
+  edge_width         = 0.9,
+  
+  # ── Colour palette ───────────────────────────────────────
+  # Any of:
+  #   c("#hex1","#hex2",...)   — custom hex vector
+  #   "viridis" / "magma" / "plasma" / "inferno" /
+  #   "cividis" / "mako" / "rocket" / "turbo"   — viridis family
+  #   "Set1" / "RdYlBu" / "Spectral" / etc.     — RColorBrewer
+  #   "roma" / "vik" / "batlow" / etc.           — scico
+  palette            = c("#D62828","#F77F00","#FCBF49","#06D6A0",
+                         "#118AB2","#073B4C","#7B2D8B","#EF476F"),
+  reverse_palette    = TRUE,
+  
+  # ── Badge (resolution label boxes) ──────────────────────
+  badge_width        = 1.10,
+  badge_height       = 0.50,
+  badge_text_size    = 4.0,
+  badge_text_colour  = "white",
+  badge_x_offset     = -1.6,
+  
+  # ── Stripes ─────────────────────────────────────────────
+  stripe_col_a       = "#EEF1F5",
+  stripe_col_b       = "#F8F9FA",
+  stripe_alpha       = 0.55,
+  
+  # ── Guide line ──────────────────────────────────────────
+  guide_colour       = "#4361EE",
+  guide_alpha        = 0.5,
+  guide_linewidth    = 0.35,
+  
+  # ── Background & panel ──────────────────────────────────
+  bg_colour          = "#FFFFFF",
+  panel_colour       = "#F8F9FA",
+  
+  # ── Text colours ────────────────────────────────────────
+  title_colour       = "#1A1A2E",
+  subtitle_colour    = "#555B6E",
+  caption_colour     = "#555B6E",
+  axis_label_colour  = "#555B6E",
+  accent_colour      = "#4361EE",
+  
+  # ── Labels ──────────────────────────────────────────────
+  title              = " ",
+  subtitle           = NULL,
+  caption            = " ",
+  axis_label         = "Resolution",
+  
+  # ── Fonts ───────────────────────────────────────────────
+  title_font         = "sans",
+  mono_font          = "mono",
+  
+  # ── Output ──────────────────────────────────────────────
+  save_file          = FALSE,
+  output_file        = "clustree_enhanced.png",
+  width              = 16,
+  height             = 20,
+  dpi                = 300
+  
+) {
+  
+  # ── 1. Base clustree plot ────────────────────────────────
+  p_base <- clustree(
+    x                = seurat_obj,
+    prefix           = prefix,
+    node_colour      = prefix,
+    node_alpha       = node_alpha,
+    node_size_range  = node_size_range,
+    edge_width       = edge_width,
+    node_text_colour = node_text_colour,
+    node_text_size   = node_text_size
+  )
+  
+  # ── 2. Layout data ───────────────────────────────────────
+  tree_data <- p_base$data
+  
+  res_levels <- tree_data %>%
+    arrange(y) %>%
+    group_by(.data[[prefix]]) %>%
+    summarise(y_pos = first(y), .groups = "drop") %>%
+    arrange(y_pos)
+  
+  x_min <- min(tree_data$x);  x_max <- max(tree_data$x)
+  y_min <- min(tree_data$y);  y_max <- max(tree_data$y)
+  
+  label_x   <- x_min + badge_x_offset
+  stripe_x0 <- label_x - badge_width / 2 - 0.5
+  stripe_x1 <- x_max + 0.6
+  
+  # ── 3. Resolve colours ──────────────────────────────────
+  n_res      <- nrow(res_levels)
+  badge_cols <- resolve_palette(palette, n_res)
+  node_cols  <- if (reverse_palette) rev(badge_cols) else badge_cols
+  node_col_map <- setNames(node_cols, levels(tree_data[[prefix]]))
+  
+  # ── 4. Stripe layers ────────────────────────────────────
+  stripe_rects <- lapply(seq_len(n_res), function(i) {
+    yc   <- res_levels$y_pos[i]
+    fill <- if (i %% 2 == 0) stripe_col_a else stripe_col_b
+    annotate("rect",
+             xmin = stripe_x0, xmax = stripe_x1,
+             ymin = yc - 0.42, ymax = yc + 0.42,
+             fill = fill, alpha = stripe_alpha)
+  })
+  
+  # ── 5. Badge layers ─────────────────────────────────────
+  badge_layers <- unlist(lapply(seq_len(n_res), function(i) {
+    yc  <- res_levels$y_pos[i]
+    col <- badge_cols[i]
+    list(
+      annotate("rect",
+               xmin = label_x - badge_width / 2, xmax = label_x + badge_width / 2,
+               ymin = yc - badge_height / 2,     ymax = yc + badge_height / 2,
+               fill = col, colour = "white", linewidth = 0.25, alpha = 0.90),
+      annotate("text",
+               x = label_x, y = yc,
+               label = as.character(res_levels[[prefix]][i]),
+               hjust = 0.5, vjust = 0.5,
+               size = badge_text_size, fontface = "bold",
+               family = mono_font, colour = badge_text_colour)
+    )
+  }), recursive = FALSE)
+  
+  # ── 6. Axis label ────────────────────────────────────────
+  axis_lbl <- annotate("text",
+                       x = label_x - badge_width / 2 - 0.25,
+                       y = mean(res_levels$y_pos),
+                       label = axis_label, angle = 90,
+                       hjust = 0.5, vjust = 1, size = 3.5,
+                       fontface = "bold", colour = axis_label_colour, family = title_font)
+  
+  # ── 7. Guide line ────────────────────────────────────────
+  guide_line <- annotate("segment",
+                         x = label_x + badge_width / 2 + 0.08,
+                         xend = label_x + badge_width / 2 + 0.08,
+                         y = y_min - 0.3, yend = y_max + 0.3,
+                         colour = guide_colour, linewidth = guide_linewidth, alpha = guide_alpha)
+
+  
+  # ── 9. Assemble ──────────────────────────────────────────
+  p_base$layers <- c(stripe_rects, p_base$layers)  # stripes behind nodes
+  
+  p_out <- p_base +
+    badge_layers +
+    guide_line   +
+    axis_lbl     +
+    scale_colour_manual(values = node_col_map, guide = "none") +
+    labs(title = title, subtitle = subtitle, caption = caption) +
+    theme_void(base_family = title_font) +
+    theme(
+      plot.background  = element_rect(fill = bg_colour,    colour = NA),
+      panel.background = element_rect(fill = panel_colour, colour = NA),
+      plot.title    = element_text(colour = title_colour,    size = 16, face = "bold",
+                                   margin = margin(b = 4),   family = title_font),
+      plot.subtitle = element_markdown(colour = subtitle_colour, size = 9,
+                                       margin = margin(b = 14), family = title_font),
+      plot.caption  = element_text(colour = caption_colour, size = 7,
+                                   hjust = 1, margin = margin(t = 10), family = mono_font),
+      legend.background = element_rect(fill = bg_colour,   colour = "#DDDDDD"),
+      legend.text       = element_text(colour = subtitle_colour, size = 7, family = mono_font),
+      legend.title      = element_text(colour = title_colour,    size = 8, face = "bold"),
+      legend.key.size   = unit(0.9, "lines"),
+      legend.box.margin = margin(6, 6, 6, 6),
+      plot.margin       = margin(t = 20, r = 30, b = 20, l = 80)
+    ) +
+    coord_cartesian(clip = "off")
+  
+  # ── 10. Save ─────────────────────────────────────────────
+  if (save_file) {
+    ggsave(output_file, plot = p_out,
+           width = width, height = height, dpi = dpi, bg = bg_colour)
+    message("✅  Saved → ", output_file)
+  }
+  
+  return(p_out)
+}
+
+
+# ══════════════════════════════════════════════════════════════
+#  EXAMPLE USAGE — palette options
+# ══════════════════════════════════════════════════════════════
+
+# ── Default (custom hex) ──────────────────────────────────────
+# plot_clustree(bm.integrated)
+
+# ── viridis family ───────────────────────────────────────────
+# plot_clustree(bm.integrated, palette = "viridis")
+# plot_clustree(bm.integrated, palette = "magma")
+# plot_clustree(bm.integrated, palette = "plasma")
+# plot_clustree(bm.integrated, palette = "inferno")
+# plot_clustree(bm.integrated, palette = "cividis")
+# plot_clustree(bm.integrated, palette = "mako")
+# plot_clustree(bm.integrated, palette = "rocket")
+# plot_clustree(bm.integrated, palette = "turbo")
+
+# ── RColorBrewer ─────────────────────────────────────────────
+# plot_clustree(bm.integrated, palette = "Spectral")
+# plot_clustree(bm.integrated, palette = "RdYlBu")
+# plot_clustree(bm.integrated, palette = "Set1")
+# plot_clustree(bm.integrated, palette = "Dark2")
+# plot_clustree(bm.integrated, palette = "Paired")
+# plot_clustree(bm.integrated, palette = "YlOrRd")
+# plot_clustree(bm.integrated, palette = "Blues")
+
+# ── scico (install.packages("scico") if needed) ───────────────
+# plot_clustree(bm.integrated, palette = "roma")
+# plot_clustree(bm.integrated, palette = "vik")
+# plot_clustree(bm.integrated, palette = "berlin")
+# plot_clustree(bm.integrated, palette = "batlow")
+# plot_clustree(bm.integrated, palette = "bamako")
+
+ plot_clustree(
+   filltered2,
+   palette = c("#D62828","#F77F00","#FCBF49","#06D6A0",
+               "#118AB2","#073B4C","#7B2D8B","#EF476F"), 
+ )
+
+ 
+# ── Save to file ─────────────────────────────────────────────
+# plot_clustree(bm.integrated,
+#   palette     = "turbo",
+#   save_file   = TRUE,
+#   output_file = "clustree_turbo.png")
