@@ -157,7 +157,7 @@ plot_clustree <- function(
   res_levels <- tree_data %>%
     arrange(y) %>%
     group_by(.data[[prefix]]) %>%
-    summarise(y_pos = first(y), .groups = "drop") %>%
+    summarise(y_pos = dplyr::first(y), .groups = "drop") %>%
     arrange(y_pos)
   
   x_min <- min(tree_data$x);  x_max <- max(tree_data$x)
@@ -215,7 +215,7 @@ plot_clustree <- function(
                          xend = label_x + badge_width / 2 + 0.08,
                          y = y_min - 0.3, yend = y_max + 0.3,
                          colour = guide_colour, linewidth = guide_linewidth, alpha = guide_alpha)
-
+  
   
   # ── 9. Assemble ──────────────────────────────────────────
   p_base$layers <- c(stripe_rects, p_base$layers)  # stripes behind nodes
@@ -289,13 +289,13 @@ plot_clustree <- function(
 # plot_clustree(bm.integrated, palette = "batlow")
 # plot_clustree(bm.integrated, palette = "bamako")
 
- plot_clustree(
-   filltered2,
-   palette = c("#D62828","#F77F00","#FCBF49","#06D6A0",
-               "#118AB2","#073B4C","#7B2D8B","#EF476F"), 
- )
+plot_clustree(
+  filltered,
+  palette = c("#D62828","#F77F00","#FCBF49","#06D6A0",
+              "#118AB2","#073B4C","#7B2D8B","#EF476F"), prefix = "integrated_snn_res."
+)
 
- 
+
 # ── Save to file ─────────────────────────────────────────────
 # plot_clustree(bm.integrated,
 #   palette     = "turbo",
