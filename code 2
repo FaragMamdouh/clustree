@@ -1,0 +1,54 @@
+
+add_clustree_highlight <- function(
+    p,
+    highlight_res,
+    prefix = "integrated_snn_res.",
+    fill = "#4361EE",
+    alpha = 0.12,
+    height_pad = 0.48
+) {
+  
+  library(dplyr)
+  library(ggplot2)
+  
+  # Extract data from clustree plot
+  tree_data <- p$data
+  
+  # Get resolution positions
+  res_levels <- tree_data %>%
+    arrange(y) %>%
+    group_by(.data[[prefix]]) %>%
+    summarise(y_pos = dplyr::first(y), .groups = "drop") %>%
+    arrange(y_pos)
+  
+  # Find target resolution
+  idx <- which(as.character(res_levels[[prefix]]) == as.character(highlight_res))
+  
+  if (length(idx) != 1) {
+    warning("Resolution not found in plot")
+    return(p)
+  }
+  
+  yc <- res_levels$y_pos[idx]
+  
+  # Get x limits
+  x_min <- min(tree_data$x)
+  x_max <- max(tree_data$x)
+  
+  # Create highlight layer
+  highlight_layer <- annotate(
+    "rect",
+    xmin = x_min - 1,
+    xmax = x_max + 1,
+    ymin = yc - height_pad,
+    ymax = yc + height_pad,
+    fill = fill,
+    alpha = alpha
+  )
+  
+  # Add as first layer (behind nodes)
+  p$layers <- c(list(highlight_layer), p$layers)
+  
+  return(p)
+}
+add_clustree_highlight(p, highlight_res = "0.5")
